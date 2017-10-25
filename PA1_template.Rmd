@@ -1,25 +1,108 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Reproducible Research: Peer Assignment 1"
+output: html_document
 ---
 
+# Introduction
 
-## Loading and preprocessing the data
+"This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day."
 
+"The data for this assignment can be downloaded from the course web site:  
+Dataset: Activity monitoring data [52K]
 
+The variables included in this dataset are:  
+- steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)  
+- date: The date on which the measurement was taken in YYYY-MM-DD format  
+- interval: Identifier for the 5-minute interval in which measurement was taken
 
-## What is mean total number of steps taken per day?
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset."
 
+# Assignments
 
+### 0. Load the respective libraries.
+```{r libraries}
+library(dplyr)
+library(knitr)
+```
 
-## What is the average daily activity pattern?
+### 1. Code for reading the dataset and/or processing the data.
+```{r read_data}
+activity <- read.csv("activity.csv")
+activity$date <- as.character(activity$date)
+activity$interval <- as.numeric(activity$interval)
+act <- filter(activity, activity$steps != "NA") # dataset with missing values excluded
+```
 
+### 2. Histogram of the total number of steps taken each day.
+```{r histogram}
+total_number_per_day <- aggregate(act[, 1], list(act$date), sum)
+hist(total_number_per_day$x, xlab="Total number of steps per day", main="Histogram of total number of steps per day")
+```
 
+### 3. Mean and median number of steps taken each day.
+```{r mean_median}
+mean_per_day <- aggregate(act$steps, list(act$date), mean)
+names(mean_per_day) <- c("date", "mean_steps")
+median_per_day <- aggregate(act$steps, list(act$date), median)
+names(median_per_day) <- c("date", "median_steps")
+mm_per_day <- merge(mean_per_day, median_per_day, by="date")
+kable(mm_per_day)
+```
 
-## Imputing missing values
+### 4. Time series plot of the average number of steps taken.
+```{r time_series}
+mean_per_interval <- aggregate(act$steps, list(act$interval), mean)
+names(mean_per_interval) <- c("interval", "mean_steps")
+mean_per_interval$interval <- as.numeric(mean_per_interval$interval)
+plot(mean_per_interval$interval, mean_per_interval$mean_steps, type="l", xlab="Interval", ylab="Average number of steps", main="Daily activity pattern")
+```
 
+### 5. The 5-minute interval that, on average, contains the maximum number of steps.
+```{r max_interval}
+max_interval <- filter(mean_per_interval, mean_per_interval$mean_steps == max(mean_per_interval$mean_steps))
+kable(max_interval)
+```
 
+### 6. Code to describe and show a strategy for imputing missing data.
+```{r number_missing}
+# number of missing data
+miss <- mutate(filter(activity, is.na(activity$steps) == TRUE), h=1)
+missing_data <- sum(miss$h)
+print(missing_data)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+Missing data will be imputed by the mean of the respective interval (averaged over all days).
+```{r impute_missing}
+# impute missing data by the mean of the respective interval (averaged over all days)
+activity <- merge(activity, mean_per_interval, by="interval")
+activity$steps_imputed <- ifelse(is.na(activity$steps)==1,activity$mean_steps,activity$steps)
+# mean and median for the imputed values
+mean_per_day_imputed <- aggregate(activity$steps_imputed, list(activity$date), mean)
+names(mean_per_day_imputed) <- c("date", "mean_steps_imputed")
+median_per_day_imputed <- aggregate(activity$steps_imputed, list(activity$date), median)
+names(median_per_day_imputed) <- c("date", "median_steps_imputed")
+mm_per_day_imputed <- merge(mean_per_day_imputed, median_per_day_imputed, by="date")
+kable(mm_per_day_imputed)
+```
+
+### 7. Histogram of the total number of steps taken each day after missing values are imputed.
+```{r hist_imputed}
+total_number_per_day_imputed <- aggregate(activity$steps_imputed, list(activity$date), sum)
+hist(total_number_per_day_imputed$x, xlab="Total number of steps per day", main="Histogram of total number of steps per day", sub="Missing values are imputed.")
+```
+
+### 8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends.
+```{r week, fig.height=10}
+activity <- mutate(activity, weekday = as.POSIXlt(as.Date(activity$date))$wday)
+activity$weekend <- ifelse(activity$weekday==0 | activity$weekday==6,1,0)
+weekend <- filter(activity, activity$weekend==1)
+weekday <- filter(activity, activity$weekend==0)
+mean_per_interval_weekend <- aggregate(weekend$steps_imputed, list(weekend$interval), mean)
+names(mean_per_interval_weekend) <- c("interval","mean_steps_weekend")
+mean_per_interval_weekday <- aggregate(weekday$steps_imputed, list(weekday$interval), mean)
+names(mean_per_interval_weekday) <- c("interval","mean_steps_weekday")
+mean_per_interval_week <- merge(mean_per_interval_weekend, mean_per_interval_weekday, by="interval")
+par(mfrow=c(2,1))
+plot(mean_per_interval_week$interval, mean_per_interval_week$mean_steps_weekend, type="l", ylim=c(0,250), xlab="Interval", ylab="Average number of steps", main="Daily activity pattern on weekends")
+plot(mean_per_interval_week$interval, mean_per_interval_week$mean_steps_weekday, type="l", ylim=c(0,250), xlab="Interval", ylab="Average number of steps", main="Daily activity pattern on weekdays")
+```
